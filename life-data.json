@@ -23,8 +23,44 @@
       "images": [],
       "created_at": "2026-05-20T08:34:56.731Z",
       "updated_at": "2026-05-20T08:34:56.731Z"
+    },
+    {
+      "id": 3,
+      "date": "2026-05-20",
+      "title": "今天看到的好文章",
+      "content": "这篇文章讲了很多有趣的东西",
+      "mood": null,
+      "location": null,
+      "images": [],
+      "created_at": "2026-05-20T08:51:05.021Z",
+      "updated_at": "2026-05-20T08:51:05.021Z"
+    },
+    {
+      "id": 4,
+      "date": "2026-05-20",
+      "title": "��������",
+      "content": "���쿴���ĺ���Ƶ",
+      "mood": "??",
+      "location": null,
+      "images": [],
+      "links": [
+        "https://www.bilibili.com/video/BV1xx411c7mD",
+        "https://mp.weixin.qq.com/s/xxx"
+      ],
+      "created_at": "2026-05-20T08:54:48.783Z",
+      "updated_at": "2026-05-20T08:54:48.783Z"
     }
   ],
-  "tags": [],
-  "entryTags": []
+  "tags": [
+    {
+      "id": 1,
+      "name": "�ղ�"
+    }
+  ],
+  "entryTags": [
+    {
+      "entry_id": 4,
+      "tag_id": 1
+    }
+  ]
 }

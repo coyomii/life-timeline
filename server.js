@@ -120,7 +120,7 @@ function filterEntries({ tag, search, year, month, includeDeleted = false }) {
 // 创建记录
 app.post('/api/entries', (req, res) => {
   try {
-    const { date, title, content, mood, location, tags = [], images = [] } = req.body;
+    const { date, title, content, mood, location, tags = [], images = [], links = [] } = req.body;
     const data = getData();
 
     const entry = {
@@ -131,6 +131,7 @@ app.post('/api/entries', (req, res) => {
       mood: mood || null,
       location: location || null,
       images: images || null,
+      links: links || [],
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     };
@@ -180,7 +181,7 @@ app.get('/api/entries/:id', (req, res) => {
 // 更新记录
 app.put('/api/entries/:id', (req, res) => {
   try {
-    const { date, title, content, mood, location, tags = [], images = [] } = req.body;
+    const { date, title, content, mood, location, tags = [], images = [], links = [] } = req.body;
     const data = getData();
     const entry = data.entries.find(e => e.id === parseInt(req.params.id));
 
@@ -194,6 +195,7 @@ app.put('/api/entries/:id', (req, res) => {
     entry.mood = mood || null;
     entry.location = location || null;
     entry.images = images || null;
+    entry.links = links || [];
     entry.updated_at = new Date().toISOString();
     save();
 

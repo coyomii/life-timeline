@@ -559,6 +559,42 @@ body {
   border-color: var(--accent-soft);
 }
 
+/* Timeline Links */
+.timeline-links {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.timeline-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 5px 11px;
+  background: var(--accent-soft);
+  border-radius: var(--radius-sm);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.18s ease;
+}
+
+.timeline-link::before {
+  content: "🔗";
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.timeline-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* Timeline Images */
 .timeline-images {
   display: grid;
