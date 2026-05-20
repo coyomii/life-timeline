@@ -124,26 +124,29 @@ life-timeline/
 
 ## 6. Git 工作流
 
-项目使用 feature 分支开发，不满意可回退：
+项目使用 feature 分支开发，新功能在独立分支上实现，满意后合并到 main：
 
 ```bash
 # 查看当前分支
 git branch
 
-# 当前在 feature/entry-links 分支上开发链接功能
-# 如不满意，直接丢弃该分支：
+# 当前在 main 分支，所有历史功能已合并
+# 如需开发新功能，从 main 切出新分支：
 git checkout main
-git branch -D feature/entry-links
+git checkout -b feature/xxx
 
-# 如满意，合并到 main：
+# 开发完成后合并回 main：
 git checkout main
-git merge feature/entry-links
-git branch -d feature/entry-links
+git merge feature/xxx
+git branch -d feature/xxx
 ```
 
 ### 提交历史
 
 ```
+e1d69c9 Merge branch 'feature/entry-links'
+7a70c1d docs: 添加开发文档 DEVELOPMENT.md
+b63d518 feat: 日记支持附加相关链接
 ce47e43 chore: 更新数据文件和规划文档
 b12e719 fix: 放宽布局宽度，减少宽屏边缘空旷感
 0a01d78 refactor: 参考 Ech0 项目全面重设计 UI
