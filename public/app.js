@@ -8,6 +8,20 @@ let isLoading = false;
 let pendingImages = []; // 待上传的图片文件
 let uploadedImageUrls = []; // 已上传的图片URL
 
+// 心情颜色映射
+const moodColors = {
+  '😊': '#f59e0b',
+  '😢': '#3b82f6',
+  '😠': '#ef4444',
+  '😴': '#6b7280',
+  '🤔': '#8b5cf6',
+  '😎': '#10b981',
+  '🥰': '#ec4899',
+  '😰': '#f97316',
+  '🤩': '#eab308',
+  '😐': '#14b8a6'
+};
+
 // ============ 初始化 ============
 document.addEventListener('DOMContentLoaded', () => {
   init();
@@ -109,29 +123,37 @@ function renderTimeline(entries) {
     return;
   }
 
-  entries.forEach(entry => {
+  entries.forEach((entry, index) => {
     const date = new Date(entry.date);
     const day = date.getDate();
-    const monthYear = `${date.getMonth() + 1}月 ${date.getFullYear()}`;
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
+
+    const moodColor = entry.mood ? (moodColors[entry.mood] || 'var(--primary)') : 'var(--primary)';
+    const moodStyle = entry.mood ? `style="background: ${moodColor}; box-shadow: 0 0 0 4px ${moodColor}20;"` : '';
+    const cardAccent = entry.mood ? `style="border-left: 4px solid ${moodColor};"` : '';
 
     const el = document.createElement('div');
-    el.className = 'timeline-item';
+    el.className = 'timeline-item fade-in-up';
+    el.style.animationDelay = `${index * 0.08}s`;
     el.innerHTML = `
       <div class="timeline-date">
-        <div class="day">${day}</div>
-        <div class="month-year">${monthYear}</div>
+        <div class="day">${String(day).padStart(2, '0')}</div>
+        <div class="month-year">${month}月 ${year}</div>
+        <div class="weekday">${weekday}</div>
       </div>
-      <div class="timeline-dot"></div>
-      <div class="timeline-content">
+      <div class="timeline-dot" ${moodStyle}></div>
+      <div class="timeline-content" ${cardAccent}>
         <div class="timeline-header">
           <div class="timeline-title">${escapeHtml(entry.title)}</div>
           <div class="timeline-actions">
-            <button class="btn btn-small btn-secondary" onclick="editEntry(${entry.id})">编辑</button>
-            <button class="btn btn-small btn-danger" onclick="deleteEntry(${entry.id})">删除</button>
+            <button class="btn btn-small btn-secondary ripple" onclick="editEntry(${entry.id})">编辑</button>
+            <button class="btn btn-small btn-danger ripple" onclick="deleteEntry(${entry.id})">删除</button>
           </div>
         </div>
         <div class="timeline-meta">
-          ${entry.mood ? `<span class="timeline-mood">${entry.mood}</span>` : ''}
+          ${entry.mood ? `<span class="timeline-mood" style="background: ${moodColor}15; color: ${moodColor};">${entry.mood}</span>` : ''}
           ${entry.location ? `<span class="timeline-location">📍 ${escapeHtml(entry.location)}</span>` : ''}
         </div>
         ${entry.content ? `<div class="timeline-body">${escapeHtml(entry.content)}</div>` : ''}
@@ -142,7 +164,7 @@ function renderTimeline(entries) {
         ` : ''}
         ${entry.tags?.length ? `
           <div class="timeline-tags">
-            ${entry.tags.map(tag => `<span class="timeline-tag" onclick="filterByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}
+            ${entry.tags.map(tag => `<span class="timeline-tag ripple" onclick="filterByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}
           </div>
         ` : ''}
       </div>
@@ -447,30 +469,36 @@ async function loadTrashView() {
     }
 
     container.innerHTML = '';
-    entries.forEach(entry => {
+    entries.forEach((entry, index) => {
       const date = new Date(entry.date);
       const day = date.getDate();
-      const monthYear = `${date.getMonth() + 1}月 ${date.getFullYear()}`;
+      const month = date.getMonth() + 1;
+      const year = date.getFullYear();
+      const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
       const deletedDate = entry.deleted_at ? new Date(entry.deleted_at).toLocaleString('zh-CN') : '';
 
+      const moodColor = entry.mood ? (moodColors[entry.mood] || 'var(--text-muted)') : 'var(--text-muted)';
+
       const el = document.createElement('div');
-      el.className = 'timeline-item';
+      el.className = 'timeline-item fade-in-up';
+      el.style.animationDelay = `${index * 0.08}s`;
       el.innerHTML = `
         <div class="timeline-date">
-          <div class="day">${day}</div>
-          <div class="month-year">${monthYear}</div>
+          <div class="day">${String(day).padStart(2, '0')}</div>
+          <div class="month-year">${month}月 ${year}</div>
+          <div class="weekday">${weekday}</div>
         </div>
-        <div class="timeline-dot" style="background: var(--text-muted);"></div>
-        <div class="timeline-content trash-item">
+        <div class="timeline-dot" style="background: ${moodColor}; opacity: 0.5;"></div>
+        <div class="timeline-content trash-item" style="border-left: 4px solid ${moodColor}40;">
           <div class="timeline-header">
             <div class="timeline-title">${escapeHtml(entry.title)}</div>
             <div class="timeline-actions">
-              <button class="btn btn-small btn-primary" onclick="restoreEntry(${entry.id})">恢复</button>
-              <button class="btn btn-small btn-danger" onclick="permanentDelete(${entry.id})">彻底删除</button>
+              <button class="btn btn-small btn-primary ripple" onclick="restoreEntry(${entry.id})">恢复</button>
+              <button class="btn btn-small btn-danger ripple" onclick="permanentDelete(${entry.id})">彻底删除</button>
             </div>
           </div>
           <div class="timeline-meta">
-            ${entry.mood ? `<span class="timeline-mood">${entry.mood}</span>` : ''}
+            ${entry.mood ? `<span class="timeline-mood" style="background: ${moodColor}15; color: ${moodColor};">${entry.mood}</span>` : ''}
             ${entry.location ? `<span class="timeline-location">📍 ${escapeHtml(entry.location)}</span>` : ''}
             <span style="color: var(--text-muted);">删除于 ${deletedDate}</span>
           </div>
@@ -634,6 +662,34 @@ async function shutdownServer() {
     </div>
   `;
 }
+
+// 按钮 ripple 效果
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.ripple');
+  if (!btn) return;
+
+  const rect = btn.getBoundingClientRect();
+  const ripple = document.createElement('span');
+  const size = Math.max(rect.width, rect.height);
+  const x = e.clientX - rect.left - size / 2;
+  const y = e.clientY - rect.top - size / 2;
+
+  ripple.style.cssText = `
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.35);
+    width: ${size}px;
+    height: ${size}px;
+    left: ${x}px;
+    top: ${y}px;
+    animation: rippleEffect 0.5s ease-out;
+    pointer-events: none;
+  `;
+  btn.style.position = 'relative';
+  btn.style.overflow = 'hidden';
+  btn.appendChild(ripple);
+  setTimeout(() => ripple.remove(), 500);
+});
 
 // 点击弹窗外部关闭
 document.getElementById('entryModal').addEventListener('click', (e) => {
