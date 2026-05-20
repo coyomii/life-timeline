@@ -1,0 +1,19 @@
+{
+  "entries": [
+    {
+      "id": 1,
+      "date": "2026-05-19",
+      "title": "工作",
+      "content": "上班",
+      "mood": "😴",
+      "location": "公司",
+      "images": [
+        "/uploads/1779160910683-414098975.jpg"
+      ],
+      "created_at": "2026-05-19T03:21:50.699Z",
+      "updated_at": "2026-05-19T03:21:50.699Z"
+    }
+  ],
+  "tags": [],
+  "entryTags": []
+}

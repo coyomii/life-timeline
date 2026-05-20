@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>人生时间线</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 顶部导航 -->
+    <header class="header">
+      <div class="header-left">
+        <h1>人生时间线</h1>
+        <span class="subtitle">记录每一天的大小事情</span>
+      </div>
+      <div class="header-right">
+        <button class="btn btn-primary" onclick="openModal()">+ 记录今天</button>
+      </div>
+    </header>
+
+    <!-- 主内容区 -->
+    <div class="main-container">
+      <!-- 侧边栏 -->
+      <aside class="sidebar">
+        <div class="search-box">
+          <input type="text" id="searchInput" placeholder="搜索回忆..." oninput="handleSearch()">
+        </div>
+
+        <nav class="nav-menu">
+          <a href="#" class="nav-item active" data-view="timeline" onclick="switchView('timeline')">
+            <span class="nav-icon">📅</span> 时间线
+          </a>
+          <a href="#" class="nav-item" data-view="tags" onclick="switchView('tags')">
+            <span class="nav-icon">🏷️</span> 标签
+          </a>
+          <a href="#" class="nav-item" data-view="stats" onclick="switchView('stats')">
+            <span class="nav-icon">📊</span> 统计
+          </a>
+          <a href="#" class="nav-item" data-view="trash" onclick="switchView('trash')">
+            <span class="nav-icon">🗑️</span> 回收站
+          </a>
+        </nav>
+
+        <div class="filter-section">
+          <h3>年份筛选</h3>
+          <div id="yearFilter" class="year-list"></div>
+        </div>
+
+        <div class="filter-section">
+          <h3>快速标签</h3>
+          <div id="tagCloud" class="tag-cloud"></div>
+        </div>
+
+        <div class="filter-section shutdown-section">
+          <button class="btn btn-shutdown" onclick="shutdownServer()">
+            <span>🛑</span> 关闭程序
+          </button>
+        </div>
+      </aside>
+
+      <!-- 内容区域 -->
+      <main class="content">
+        <!-- 时间线视图 -->
+        <div id="timelineView" class="view active">
+          <div class="view-header">
+            <h2 id="timelineTitle">全部记录</h2>
+            <span id="timelineCount" class="count-badge"></span>
+          </div>
+          <div id="timelineList" class="timeline"></div>
+          <div id="loadMore" class="load-more" style="display:none;">
+            <button class="btn btn-secondary" onclick="loadMore()">加载更多</button>
+          </div>
+        </div>
+
+        <!-- 标签视图 -->
+        <div id="tagsView" class="view">
+          <div class="view-header">
+            <h2>标签大全</h2>
+          </div>
+          <div id="tagsList" class="tags-grid"></div>
+        </div>
+
+        <!-- 统计视图 -->
+        <div id="statsView" class="view">
+          <div class="view-header">
+            <h2>数据统计</h2>
+          </div>
+          <div id="statsContent" class="stats-grid"></div>
+        </div>
+
+        <!-- 回收站视图 -->
+        <div id="trashView" class="view">
+          <div class="view-header">
+            <h2>回收站</h2>
+            <span id="trashCount" class="count-badge"></span>
+          </div>
+          <div id="trashList" class="timeline"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <!-- 添加/编辑弹窗 -->
+  <div id="entryModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">记录今天</h3>
+        <button class="close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <form id="entryForm" onsubmit="saveEntry(event)">
+        <input type="hidden" id="entryId">
+        <div class="form-row">
+          <div class="form-group">
+            <label>日期</label>
+            <input type="date" id="entryDate" required>
+          </div>
+          <div class="form-group">
+            <label>心情</label>
+            <select id="entryMood">
+              <option value="">选择心情</option>
+              <option value="😊">😊 开心</option>
+              <option value="😢">😢 难过</option>
+              <option value="😠">😠 生气</option>
+              <option value="😴">😴 疲惫</option>
+              <option value="🤔">🤔 思考</option>
+              <option value="😎">😎 得意</option>
+              <option value="🥰">🥰 幸福</option>
+              <option value="😰">😰 焦虑</option>
+              <option value="🤩">🤩 兴奋</option>
+              <option value="😐">😐 平静</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>标题</label>
+          <input type="text" id="entryTitle" placeholder="今天发生了什么？" required>
+        </div>
+        <div class="form-group">
+          <label>地点（可选）</label>
+          <input type="text" id="entryLocation" placeholder="在哪里？">
+        </div>
+        <div class="form-group">
+          <label>内容</label>
+          <textarea id="entryContent" rows="6" placeholder="详细描述一下..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>图片</label>
+          <input type="file" id="entryImages" accept="image/*" multiple onchange="handleImageSelect(event)" style="display:none;">
+          <button type="button" class="btn btn-secondary" onclick="document.getElementById('entryImages').click()">📷 选择图片</button>
+          <div id="imagePreview" class="image-preview"></div>
+          <input type="hidden" id="entryImageUrls">
+        </div>
+        <div class="form-group">
+          <label>标签（用逗号分隔）</label>
+          <input type="text" id="entryTags" placeholder="生活, 工作, 旅行...">
+          <div id="tagSuggestions" class="tag-suggestions"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-secondary" onclick="closeModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
