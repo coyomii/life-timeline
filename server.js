@@ -3,7 +3,11 @@ const path = require('path');
 const os = require('os');
 const fs = require('fs');
 const multer = require('multer');
-const { initDatabase, getData, save } = require('./database');
+const {
+  initDatabase, createEntry, updateEntry, getEntryById, listEntries,
+  softDeleteEntry, restoreEntry, permanentlyDeleteEntry,
+  setEntryTags, getEntryTags, getAllTags, getStats, exportAllEntries
+} = require('./database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,88 +35,9 @@ app.use('/uploads', express.static(UPLOAD_DIR));
 
 // ============ 辅助函数 ============
 
-function getEntryTags(entryId) {
-  const data = getData();
-  const tagIds = data.entryTags
-    .filter(et => et.entry_id === entryId)
-    .map(et => et.tag_id);
-  return data.tags
-    .filter(t => tagIds.includes(t.id))
-    .map(t => t.name);
-}
-
-function setEntryTags(entryId, tagNames) {
-  const data = getData();
-  // 清除旧标签关联
-  data.entryTags = data.entryTags.filter(et => et.entry_id !== entryId);
-
-  for (const name of tagNames) {
-    const trimmed = name.trim();
-    if (!trimmed) continue;
-
-    let tag = data.tags.find(t => t.name === trimmed);
-    if (!tag) {
-      tag = { id: data.tags.length > 0 ? Math.max(...data.tags.map(t => t.id)) + 1 : 1, name: trimmed };
-      data.tags.push(tag);
-    }
-
-    data.entryTags.push({ entry_id: entryId, tag_id: tag.id });
-  }
-  save();
-}
-
-function enrichEntry(entry) {
+function enrichWithTags(entry) {
   if (!entry) return null;
   return { ...entry, tags: getEntryTags(entry.id) };
-}
-
-function filterEntries({ tag, search, year, month, includeDeleted = false }) {
-  const data = getData();
-  let entries = [...data.entries];
-
-  // 默认排除已删除的记录
-  if (!includeDeleted) {
-    entries = entries.filter(e => !e.deleted_at);
-  } else {
-    entries = entries.filter(e => e.deleted_at);
-  }
-
-  if (tag) {
-    const tagObj = data.tags.find(t => t.name === tag);
-    if (tagObj) {
-      const entryIds = data.entryTags
-        .filter(et => et.tag_id === tagObj.id)
-        .map(et => et.entry_id);
-      entries = entries.filter(e => entryIds.includes(e.id));
-    } else {
-      entries = [];
-    }
-  }
-
-  if (search) {
-    const lower = search.toLowerCase();
-    entries = entries.filter(e =>
-      (e.title && e.title.toLowerCase().includes(lower)) ||
-      (e.content && e.content.toLowerCase().includes(lower))
-    );
-  }
-
-  if (year) {
-    entries = entries.filter(e => e.date && e.date.startsWith(year));
-  }
-
-  if (month) {
-    const m = month.padStart(2, '0');
-    entries = entries.filter(e => e.date && e.date.substring(5, 7) === m);
-  }
-
-  // 按日期降序，日期相同按创建时间降序
-  entries.sort((a, b) => {
-    if (a.date !== b.date) return b.date.localeCompare(a.date);
-    return (b.created_at || '').localeCompare(a.created_at || '');
-  });
-
-  return entries;
 }
 
 // ============ API 路由 ============
@@ -121,26 +46,9 @@ function filterEntries({ tag, search, year, month, includeDeleted = false }) {
 app.post('/api/entries', (req, res) => {
   try {
     const { date, title, content, mood, location, tags = [], images = [], links = [] } = req.body;
-    const data = getData();
-
-    const entry = {
-      id: data.entries.length > 0 ? Math.max(...data.entries.map(e => e.id)) + 1 : 1,
-      date,
-      title,
-      content: content || null,
-      mood: mood || null,
-      location: location || null,
-      images: images || null,
-      links: links || [],
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    };
-
-    data.entries.push(entry);
-    save();
+    let entry = createEntry({ date, title, content, mood, location, images, links });
     setEntryTags(entry.id, tags);
-
-    res.json({ success: true, data: enrichEntry(entry) });
+    res.json({ success: true, data: enrichWithTags(entry) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -150,13 +58,11 @@ app.post('/api/entries', (req, res) => {
 app.get('/api/entries', (req, res) => {
   try {
     const { tag, search, year, month, limit = 50, offset = 0 } = req.query;
-    const entries = filterEntries({ tag, search, year, month });
-    const total = entries.length;
-    const paginated = entries.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    const { entries, total } = listEntries({ tag, search, year, month, limit: parseInt(limit), offset: parseInt(offset) });
 
     res.json({
       success: true,
-      data: paginated.map(enrichEntry),
+      data: entries.map(enrichWithTags),
       pagination: { total, limit: parseInt(limit), offset: parseInt(offset) }
     });
   } catch (err) {
@@ -167,12 +73,11 @@ app.get('/api/entries', (req, res) => {
 // 获取单条记录
 app.get('/api/entries/:id', (req, res) => {
   try {
-    const data = getData();
-    const entry = data.entries.find(e => e.id === parseInt(req.params.id));
+    const entry = getEntryById(parseInt(req.params.id));
     if (!entry) {
       return res.status(404).json({ success: false, error: '记录不存在' });
     }
-    res.json({ success: true, data: enrichEntry(entry) });
+    res.json({ success: true, data: enrichWithTags(entry) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -182,25 +87,14 @@ app.get('/api/entries/:id', (req, res) => {
 app.put('/api/entries/:id', (req, res) => {
   try {
     const { date, title, content, mood, location, tags = [], images = [], links = [] } = req.body;
-    const data = getData();
-    const entry = data.entries.find(e => e.id === parseInt(req.params.id));
+    const entry = updateEntry(parseInt(req.params.id), { date, title, content, mood, location, images, links });
 
     if (!entry) {
       return res.status(404).json({ success: false, error: '记录不存在' });
     }
 
-    entry.date = date;
-    entry.title = title;
-    entry.content = content || null;
-    entry.mood = mood || null;
-    entry.location = location || null;
-    entry.images = images || null;
-    entry.links = links || [];
-    entry.updated_at = new Date().toISOString();
-    save();
-
     setEntryTags(entry.id, tags);
-    res.json({ success: true, data: enrichEntry(entry) });
+    res.json({ success: true, data: enrichWithTags(entry) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -209,12 +103,7 @@ app.put('/api/entries/:id', (req, res) => {
 // 软删除记录（移到回收站）
 app.delete('/api/entries/:id', (req, res) => {
   try {
-    const data = getData();
-    const entry = data.entries.find(e => e.id === parseInt(req.params.id));
-    if (entry) {
-      entry.deleted_at = new Date().toISOString();
-      save();
-    }
+    softDeleteEntry(parseInt(req.params.id));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -225,13 +114,11 @@ app.delete('/api/entries/:id', (req, res) => {
 app.get('/api/trash', (req, res) => {
   try {
     const { limit = 50, offset = 0 } = req.query;
-    const entries = filterEntries({ includeDeleted: true });
-    const total = entries.length;
-    const paginated = entries.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    const { entries, total } = listEntries({ includeDeleted: true, limit: parseInt(limit), offset: parseInt(offset) });
 
     res.json({
       success: true,
-      data: paginated.map(enrichEntry),
+      data: entries.map(enrichWithTags),
       pagination: { total, limit: parseInt(limit), offset: parseInt(offset) }
     });
   } catch (err) {
@@ -242,14 +129,11 @@ app.get('/api/trash', (req, res) => {
 // 恢复记录
 app.post('/api/trash/:id/restore', (req, res) => {
   try {
-    const data = getData();
-    const entry = data.entries.find(e => e.id === parseInt(req.params.id));
+    const entry = restoreEntry(parseInt(req.params.id));
     if (!entry) {
       return res.status(404).json({ success: false, error: '记录不存在' });
     }
-    delete entry.deleted_at;
-    save();
-    res.json({ success: true, data: enrichEntry(entry) });
+    res.json({ success: true, data: enrichWithTags(entry) });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -258,13 +142,7 @@ app.post('/api/trash/:id/restore', (req, res) => {
 // 彻底删除记录
 app.delete('/api/trash/:id', (req, res) => {
   try {
-    const data = getData();
-    const idx = data.entries.findIndex(e => e.id === parseInt(req.params.id));
-    if (idx >= 0) {
-      data.entries.splice(idx, 1);
-      data.entryTags = data.entryTags.filter(et => et.entry_id !== parseInt(req.params.id));
-      save();
-    }
+    permanentlyDeleteEntry(parseInt(req.params.id));
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -274,13 +152,7 @@ app.delete('/api/trash/:id', (req, res) => {
 // 获取所有标签
 app.get('/api/tags', (req, res) => {
   try {
-    const data = getData();
-    const tagCounts = data.tags.map(tag => {
-      const count = data.entryTags.filter(et => et.tag_id === tag.id).length;
-      return { name: tag.name, count };
-    }).sort((a, b) => b.count - a.count);
-
-    res.json({ success: true, data: tagCounts });
+    res.json({ success: true, data: getAllTags() });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -289,38 +161,7 @@ app.get('/api/tags', (req, res) => {
 // 获取统计信息
 app.get('/api/stats', (req, res) => {
   try {
-    const data = getData();
-    const activeEntries = data.entries.filter(e => !e.deleted_at);
-    const totalEntries = activeEntries.length;
-    const totalTags = data.tags.length;
-
-    // 年份统计（排除已删除）
-    const yearMap = {};
-    for (const entry of activeEntries) {
-      if (entry.date) {
-        const year = entry.date.substring(0, 4);
-        yearMap[year] = (yearMap[year] || 0) + 1;
-      }
-    }
-    const yearStats = Object.entries(yearMap)
-      .map(([year, count]) => ({ year, count }))
-      .sort((a, b) => b.year.localeCompare(a.year));
-
-    // 心情统计（排除已删除）
-    const moodMap = {};
-    for (const entry of activeEntries) {
-      if (entry.mood) {
-        moodMap[entry.mood] = (moodMap[entry.mood] || 0) + 1;
-      }
-    }
-    const moodStats = Object.entries(moodMap)
-      .map(([mood, count]) => ({ mood, count }))
-      .sort((a, b) => b.count - a.count);
-
-    res.json({
-      success: true,
-      data: { totalEntries, totalTags, yearStats, moodStats }
-    });
+    res.json({ success: true, data: getStats() });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
   }
@@ -340,11 +181,10 @@ app.post('/api/upload', upload.array('images', 10), (req, res) => {
 // 导出数据库
 app.get('/api/export', (req, res) => {
   try {
-    const data = getData();
-    const entries = [...data.entries].sort((a, b) => b.date.localeCompare(a.date));
+    const entries = exportAllEntries();
     res.json({
       success: true,
-      data: entries.map(enrichEntry)
+      data: entries.map(enrichWithTags)
     });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });
@@ -381,6 +221,6 @@ app.listen(PORT, () => {
   if (localIP) {
     console.log(`局域网访问: http://${localIP}:${PORT}`);
   }
-  console.log(`数据文件: ${path.join(__dirname, 'life-data.json')}`);
+  console.log(`数据库: ${path.join(__dirname, 'life.db')}`);
   console.log(`========================================\n`);
 });
