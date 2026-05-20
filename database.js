@@ -1,178 +1,335 @@
+const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const path = require('path');
 
-const DATA_PATH = path.join(__dirname, 'life-data.json');
+const DB_PATH = path.join(__dirname, 'life.db');
+const JSON_PATH = path.join(__dirname, 'life-data.json');
+const JSON_BACKUP_PATH = path.join(__dirname, 'life-data.json.bak');
 
-let data = { entries: [], tags: [], entryTags: [] };
-let nextId = 1;
-let nextTagId = 1;
+let db;
 
-function loadData() {
-  if (fs.existsSync(DATA_PATH)) {
-    try {
-      const raw = fs.readFileSync(DATA_PATH, 'utf8');
-      data = JSON.parse(raw);
-      // 恢复自增ID
-      nextId = data.entries.length > 0 ? Math.max(...data.entries.map(e => e.id)) + 1 : 1;
-      nextTagId = data.tags.length > 0 ? Math.max(...data.tags.map(t => t.id)) + 1 : 1;
-      console.log(`已加载 ${data.entries.length} 条记录, ${data.tags.length} 个标签`);
-    } catch (err) {
-      console.error('加载数据失败，使用空数据:', err.message);
+function initDatabase() {
+  db = new DatabaseSync(DB_PATH);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      title TEXT NOT NULL,
+      content TEXT,
+      mood TEXT,
+      location TEXT,
+      images TEXT,
+      links TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS tags (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT UNIQUE NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS entry_tags (
+      entry_id INTEGER NOT NULL,
+      tag_id INTEGER NOT NULL,
+      PRIMARY KEY (entry_id, tag_id),
+      FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(date);
+    CREATE INDEX IF NOT EXISTS idx_entries_deleted ON entries(deleted_at);
+    CREATE INDEX IF NOT EXISTS idx_entry_tags_entry ON entry_tags(entry_id);
+    CREATE INDEX IF NOT EXISTS idx_entry_tags_tag ON entry_tags(tag_id);
+  `);
+
+  migrateFromJson();
+  console.log('SQLite 数据存储已就绪');
+}
+
+function migrateFromJson() {
+  if (!fs.existsSync(JSON_PATH)) return;
+
+  const count = db.prepare('SELECT COUNT(*) as count FROM entries').get().count;
+  if (count > 0) return;
+
+  try {
+    const raw = fs.readFileSync(JSON_PATH, 'utf8');
+    const data = JSON.parse(raw);
+
+    const insertEntry = db.prepare(`
+      INSERT INTO entries (id, date, title, content, mood, location, images, links, created_at, updated_at, deleted_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const insertTag = db.prepare(`
+      INSERT OR IGNORE INTO tags (id, name) VALUES (?, ?)
+    `);
+
+    const insertEntryTag = db.prepare(`
+      INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)
+    `);
+
+    for (const entry of data.entries || []) {
+      insertEntry.run(
+        entry.id,
+        entry.date,
+        entry.title,
+        entry.content || null,
+        entry.mood || null,
+        entry.location || null,
+        entry.images ? JSON.stringify(entry.images) : null,
+        entry.links ? JSON.stringify(entry.links) : null,
+        entry.created_at,
+        entry.updated_at,
+        entry.deleted_at || null
+      );
+    }
+
+    for (const tag of data.tags || []) {
+      insertTag.run(tag.id, tag.name);
+    }
+
+    for (const et of data.entryTags || []) {
+      insertEntryTag.run(et.entry_id, et.tag_id);
+    }
+
+    // 迁移完成后备份并删除 JSON 文件
+    fs.renameSync(JSON_PATH, JSON_BACKUP_PATH);
+    console.log(`已迁移 ${data.entries?.length || 0} 条记录到 SQLite，原 JSON 文件已备份为 life-data.json.bak`);
+  } catch (err) {
+    console.error('迁移 JSON 数据失败:', err.message);
+  }
+}
+
+// ============ entries ============
+
+function createEntry({ date, title, content, mood, location, images, links }) {
+  const result = db.prepare(`
+    INSERT INTO entries (date, title, content, mood, location, images, links, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    date,
+    title,
+    content || null,
+    mood || null,
+    location || null,
+    images && images.length > 0 ? JSON.stringify(images) : null,
+    links && links.length > 0 ? JSON.stringify(links) : null,
+    new Date().toISOString(),
+    new Date().toISOString()
+  );
+  return getEntryById(Number(result.lastInsertRowid));
+}
+
+function updateEntry(id, { date, title, content, mood, location, images, links }) {
+  db.prepare(`
+    UPDATE entries
+    SET date = ?, title = ?, content = ?, mood = ?, location = ?, images = ?, links = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    date,
+    title,
+    content || null,
+    mood || null,
+    location || null,
+    images && images.length > 0 ? JSON.stringify(images) : null,
+    links && links.length > 0 ? JSON.stringify(links) : null,
+    new Date().toISOString(),
+    id
+  );
+  return getEntryById(id);
+}
+
+function softDeleteEntry(id) {
+  db.prepare(`UPDATE entries SET deleted_at = ? WHERE id = ?`).run(new Date().toISOString(), id);
+  return getEntryById(id);
+}
+
+function restoreEntry(id) {
+  db.prepare(`UPDATE entries SET deleted_at = NULL WHERE id = ?`).run(id);
+  return getEntryById(id);
+}
+
+function permanentlyDeleteEntry(id) {
+  db.prepare(`DELETE FROM entry_tags WHERE entry_id = ?`).run(id);
+  const result = db.prepare(`DELETE FROM entries WHERE id = ?`).run(id);
+  return result.changes > 0;
+}
+
+function getEntryById(id) {
+  const row = db.prepare(`SELECT * FROM entries WHERE id = ?`).get(id);
+  if (!row) return null;
+  return rowToEntry(row);
+}
+
+function listEntries({ tag, search, year, month, limit = 50, offset = 0, includeDeleted = false } = {}) {
+  const conditions = [];
+  const params = [];
+
+  if (!includeDeleted) {
+    conditions.push('deleted_at IS NULL');
+  } else {
+    conditions.push('deleted_at IS NOT NULL');
+  }
+
+  if (tag) {
+    conditions.push(`id IN (SELECT et.entry_id FROM entry_tags et JOIN tags t ON et.tag_id = t.id WHERE t.name = ?)`);
+    params.push(tag);
+  }
+
+  if (search) {
+    conditions.push(`(LOWER(title) LIKE ? OR LOWER(content) LIKE ?)`);
+    const pattern = `%${search.toLowerCase()}%`;
+    params.push(pattern, pattern);
+  }
+
+  if (year) {
+    conditions.push(`date LIKE ?`);
+    params.push(`${year}%`);
+  }
+
+  if (month) {
+    const m = month.padStart(2, '0');
+    conditions.push(`SUBSTR(date, 6, 2) = ?`);
+    params.push(m);
+  }
+
+  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+  const countRow = db.prepare(`SELECT COUNT(*) as total FROM entries ${whereClause}`).get(...params);
+  const total = countRow.total;
+
+  const rows = db.prepare(`
+    SELECT * FROM entries ${whereClause}
+    ORDER BY date DESC, created_at DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset);
+
+  return {
+    entries: rows.map(rowToEntry),
+    total
+  };
+}
+
+// ============ tags ============
+
+function getOrCreateTag(name) {
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+
+  let row = db.prepare(`SELECT * FROM tags WHERE name = ?`).get(trimmed);
+  if (!row) {
+    const result = db.prepare(`INSERT INTO tags (name) VALUES (?)`).run(trimmed);
+    row = { id: Number(result.lastInsertRowid), name: trimmed };
+  }
+  return row;
+}
+
+function setEntryTags(entryId, tagNames) {
+  db.prepare(`DELETE FROM entry_tags WHERE entry_id = ?`).run(entryId);
+
+  for (const name of tagNames) {
+    const tag = getOrCreateTag(name);
+    if (tag) {
+      db.prepare(`INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)`).run(entryId, tag.id);
     }
   }
 }
 
-function saveData() {
-  fs.writeFileSync(DATA_PATH, JSON.stringify(data, null, 2), 'utf8');
+function getEntryTags(entryId) {
+  const rows = db.prepare(`
+    SELECT t.name FROM tags t
+    JOIN entry_tags et ON t.id = et.tag_id
+    WHERE et.entry_id = ?
+    ORDER BY t.name
+  `).all(entryId);
+  return rows.map(r => r.name);
 }
 
-function initDatabase() {
-  loadData();
-  console.log('数据存储已就绪');
+function getAllTags() {
+  const rows = db.prepare(`
+    SELECT t.name, COUNT(et.entry_id) as count
+    FROM tags t
+    LEFT JOIN entry_tags et ON t.id = et.tag_id
+    LEFT JOIN entries e ON et.entry_id = e.id AND e.deleted_at IS NULL
+    GROUP BY t.id, t.name
+    ORDER BY count DESC, t.name
+  `).all();
+  return rows.map(r => ({ name: r.name, count: r.count }));
 }
 
-function getDb() {
+// ============ stats ============
+
+function getStats() {
+  const totalEntries = db.prepare(`SELECT COUNT(*) as count FROM entries WHERE deleted_at IS NULL`).get().count;
+  const totalTags = db.prepare(`SELECT COUNT(*) as count FROM tags`).get().count;
+
+  const yearRows = db.prepare(`
+    SELECT SUBSTR(date, 1, 4) as year, COUNT(*) as count
+    FROM entries WHERE deleted_at IS NULL AND date IS NOT NULL
+    GROUP BY year ORDER BY year DESC
+  `).all();
+
+  const moodRows = db.prepare(`
+    SELECT mood, COUNT(*) as count
+    FROM entries WHERE deleted_at IS NULL AND mood IS NOT NULL
+    GROUP BY mood ORDER BY count DESC
+  `).all();
+
   return {
-    prepare: (sql) => {
-      // 模拟 better-sqlite3 的 prepare API
-      const lower = sql.toLowerCase().trim();
-
-      if (lower.startsWith('insert into entries')) {
-        return {
-          run: (date, title, content, mood, location) => {
-            const entry = {
-              id: nextId++,
-              date,
-              title,
-              content: content || null,
-              mood: mood || null,
-              location: location || null,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            };
-            data.entries.push(entry);
-            saveData();
-            return { lastInsertRowid: entry.id, changes: 1 };
-          }
-        };
-      }
-
-      if (lower.startsWith('update entries')) {
-        return {
-          run: (date, title, content, mood, location, id) => {
-            const entry = data.entries.find(e => e.id === id);
-            if (entry) {
-              entry.date = date;
-              entry.title = title;
-              entry.content = content || null;
-              entry.mood = mood || null;
-              entry.location = location || null;
-              entry.updated_at = new Date().toISOString();
-              saveData();
-            }
-            return { changes: entry ? 1 : 0 };
-          }
-        };
-      }
-
-      if (lower.startsWith('delete from entries')) {
-        return {
-          run: (id) => {
-            const idx = data.entries.findIndex(e => e.id === id);
-            if (idx >= 0) {
-              data.entries.splice(idx, 1);
-              // 清理关联的标签
-              data.entryTags = data.entryTags.filter(et => et.entry_id !== id);
-              saveData();
-            }
-            return { changes: idx >= 0 ? 1 : 0 };
-          }
-        };
-      }
-
-      if (lower.startsWith('delete from entry_tags where entry_id')) {
-        return {
-          run: (entryId) => {
-            data.entryTags = data.entryTags.filter(et => et.entry_id !== entryId);
-            saveData();
-          }
-        };
-      }
-
-      if (lower.startsWith('insert or ignore into tags')) {
-        return {
-          run: (name) => {
-            if (!data.tags.find(t => t.name === name)) {
-              data.tags.push({ id: nextTagId++, name });
-              saveData();
-            }
-          }
-        };
-      }
-
-      if (lower.startsWith('insert into entry_tags')) {
-        return {
-          run: (entryId, tagId) => {
-            if (!data.entryTags.find(et => et.entry_id === entryId && et.tag_id === tagId)) {
-              data.entryTags.push({ entry_id: entryId, tag_id: tagId });
-              saveData();
-            }
-          }
-        };
-      }
-
-      if (lower.startsWith('select * from entries where id = ?')) {
-        return {
-          get: (id) => data.entries.find(e => e.id === id) || null
-        };
-      }
-
-      if (lower.startsWith('select id from tags where name = ?')) {
-        return {
-          get: (name) => data.tags.find(t => t.name === name) || null
-        };
-      }
-
-      if (lower.startsWith('select count(*) as count from entries')) {
-        return {
-          get: () => ({ count: data.entries.length })
-        };
-      }
-
-      if (lower.startsWith('select count(*) as count from tags')) {
-        return {
-          get: () => ({ count: data.tags.length })
-        };
-      }
-
-      // 复杂的 SELECT 查询由 server.js 直接处理
-      throw new Error('未模拟的 SQL: ' + sql.substring(0, 50));
-    }
+    totalEntries,
+    totalTags,
+    yearStats: yearRows.map(r => ({ year: r.year, count: r.count })),
+    moodStats: moodRows.map(r => ({ mood: r.mood, count: r.count }))
   };
 }
 
-// 直接操作数据的辅助函数（供 server.js 使用）
-function getData() {
-  return data;
+function exportAllEntries() {
+  const rows = db.prepare(`
+    SELECT * FROM entries WHERE deleted_at IS NULL ORDER BY date DESC
+  `).all();
+  return rows.map(rowToEntry);
 }
 
-function save() {
-  saveData();
+// ============ helpers ============
+
+function rowToEntry(row) {
+  return {
+    id: row.id,
+    date: row.date,
+    title: row.title,
+    content: row.content,
+    mood: row.mood,
+    location: row.location,
+    images: row.images ? JSON.parse(row.images) : null,
+    links: row.links ? JSON.parse(row.links) : [],
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    deleted_at: row.deleted_at
+  };
 }
 
-function getNextId() {
-  return nextId++;
-}
-
-function getNextTagId() {
-  return nextTagId++;
+function enrichEntry(entry) {
+  if (!entry) return null;
+  return { ...entry, tags: getEntryTags(entry.id) };
 }
 
 module.exports = {
   initDatabase,
-  getDb,
-  getData,
-  save,
-  getNextId,
-  getNextTagId
+  createEntry,
+  updateEntry,
+  getEntryById,
+  listEntries,
+  softDeleteEntry,
+  restoreEntry,
+  permanentlyDeleteEntry,
+  setEntryTags,
+  getEntryTags,
+  getAllTags,
+  getStats,
+  exportAllEntries,
+  enrichEntry
 };
