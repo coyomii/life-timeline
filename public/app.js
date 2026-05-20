@@ -5,22 +5,8 @@ let entriesOffset = 0;
 let entriesLimit = 20;
 let allTags = [];
 let isLoading = false;
-let pendingImages = []; // 待上传的图片文件
-let uploadedImageUrls = []; // 已上传的图片URL
-
-// 心情颜色映射
-const moodColors = {
-  '😊': '#f59e0b',
-  '😢': '#3b82f6',
-  '😠': '#ef4444',
-  '😴': '#6b7280',
-  '🤔': '#8b5cf6',
-  '😎': '#10b981',
-  '🥰': '#ec4899',
-  '😰': '#f97316',
-  '🤩': '#eab308',
-  '😐': '#14b8a6'
-};
+let pendingImages = [];
+let uploadedImageUrls = [];
 
 // ============ 初始化 ============
 document.addEventListener('DOMContentLoaded', () => {
@@ -89,7 +75,6 @@ async function loadEntries(append = false) {
     const loadMoreBtn = document.getElementById('loadMore');
     loadMoreBtn.style.display = entriesOffset < data.pagination.total ? 'block' : 'none';
 
-    // 更新标题
     let title = '全部记录';
     if (currentFilter.tag) title = `标签：${currentFilter.tag}`;
     if (currentFilter.year) title = `${currentFilter.year}年`;
@@ -108,7 +93,7 @@ function loadMore() {
   loadEntries(true);
 }
 
-// ============ 渲染时间线 ============
+// ============ 渲染时间线 (Ech0 Style) ============
 function renderTimeline(entries) {
   const container = document.getElementById('timelineList');
 
@@ -125,35 +110,35 @@ function renderTimeline(entries) {
 
   entries.forEach((entry, index) => {
     const date = new Date(entry.date);
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
     const year = date.getFullYear();
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
     const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
-
-    const moodColor = entry.mood ? (moodColors[entry.mood] || 'var(--primary)') : 'var(--primary)';
-    const moodStyle = entry.mood ? `style="background: ${moodColor}; box-shadow: 0 0 0 4px ${moodColor}20;"` : '';
-    const cardAccent = entry.mood ? `style="border-left: 4px solid ${moodColor};"` : '';
+    const dateText = `${year}年${month}月${day}日 ${weekday}`;
 
     const el = document.createElement('div');
-    el.className = 'timeline-item fade-in-up';
-    el.style.animationDelay = `${index * 0.08}s`;
+    el.className = 'timeline-item fade-in-down';
+    el.style.animationDelay = `${Math.min(index * 0.1, 0.6)}s`;
+
     el.innerHTML = `
-      <div class="timeline-date">
-        <div class="day">${String(day).padStart(2, '0')}</div>
-        <div class="month-year">${month}月 ${year}</div>
-        <div class="weekday">${weekday}</div>
-      </div>
-      <div class="timeline-dot" ${moodStyle}></div>
-      <div class="timeline-content" ${cardAccent}>
-        <div class="timeline-header">
-          <div class="timeline-title">${escapeHtml(entry.title)}</div>
-          <div class="timeline-actions">
-            <button class="btn btn-small btn-secondary ripple" onclick="editEntry(${entry.id})">编辑</button>
-            <button class="btn btn-small btn-danger ripple" onclick="deleteEntry(${entry.id})">删除</button>
+      <div class="timeline-header-sticky">
+        <div class="timeline-marker-row">
+          <div class="timeline-marker">
+            <div class="timeline-marker-dot"></div>
           </div>
+          <div class="timeline-date-text">${dateText}</div>
+        </div>
+        <div class="timeline-actions-row">
+          <button class="btn btn-small btn-secondary" onclick="editEntry(${entry.id})">编辑</button>
+          <button class="btn btn-small btn-danger" onclick="deleteEntry(${entry.id})">删除</button>
+        </div>
+      </div>
+      <div class="timeline-card">
+        <div class="timeline-card-header">
+          <div class="timeline-title">${escapeHtml(entry.title)}</div>
         </div>
         <div class="timeline-meta">
-          ${entry.mood ? `<span class="timeline-mood" style="background: ${moodColor}15; color: ${moodColor};">${entry.mood}</span>` : ''}
+          ${entry.mood ? `<span class="timeline-mood">${entry.mood}</span>` : ''}
           ${entry.location ? `<span class="timeline-location">📍 ${escapeHtml(entry.location)}</span>` : ''}
         </div>
         ${entry.content ? `<div class="timeline-body">${escapeHtml(entry.content)}</div>` : ''}
@@ -164,7 +149,7 @@ function renderTimeline(entries) {
         ` : ''}
         ${entry.tags?.length ? `
           <div class="timeline-tags">
-            ${entry.tags.map(tag => `<span class="timeline-tag ripple" onclick="filterByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}
+            ${entry.tags.map(tag => `<span class="timeline-tag" onclick="filterByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}
           </div>
         ` : ''}
       </div>
@@ -340,7 +325,6 @@ function openModal(entryId = null) {
   document.getElementById('modalTitle').textContent = entryId ? '编辑记录' : '记录今天';
   document.getElementById('entryId').value = entryId || '';
 
-  // 重置图片状态
   pendingImages = [];
   uploadedImageUrls = [];
   renderImagePreview();
@@ -350,7 +334,6 @@ function openModal(entryId = null) {
     document.getElementById('entryDate').value = formatDate(new Date());
   }
 
-  // 加载标签建议
   renderTagSuggestions();
 }
 
@@ -371,7 +354,6 @@ async function editEntry(id) {
     document.getElementById('entryLocation').value = entry.location || '';
     document.getElementById('entryTags').value = (entry.tags || []).join(', ');
 
-    // 加载已有图片
     uploadedImageUrls = entry.images || [];
     pendingImages = [];
     renderImagePreview();
@@ -386,7 +368,6 @@ async function editEntry(id) {
 async function saveEntry(e) {
   e.preventDefault();
 
-  // 先上传待上传的图片
   let imageUrls = [...uploadedImageUrls];
   if (pendingImages.length > 0) {
     try {
@@ -449,7 +430,6 @@ async function deleteEntry(id) {
 }
 
 // ============ 回收站 ============
-
 async function loadTrashView() {
   try {
     const data = await api('/api/trash');
@@ -471,36 +451,38 @@ async function loadTrashView() {
     container.innerHTML = '';
     entries.forEach((entry, index) => {
       const date = new Date(entry.date);
-      const day = date.getDate();
-      const month = date.getMonth() + 1;
       const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const day = date.getDate();
       const weekday = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()];
+      const dateText = `${year}年${month}月${day}日 ${weekday}`;
       const deletedDate = entry.deleted_at ? new Date(entry.deleted_at).toLocaleString('zh-CN') : '';
 
-      const moodColor = entry.mood ? (moodColors[entry.mood] || 'var(--text-muted)') : 'var(--text-muted)';
-
       const el = document.createElement('div');
-      el.className = 'timeline-item fade-in-up';
-      el.style.animationDelay = `${index * 0.08}s`;
+      el.className = 'timeline-item fade-in-down';
+      el.style.animationDelay = `${Math.min(index * 0.1, 0.6)}s`;
+
       el.innerHTML = `
-        <div class="timeline-date">
-          <div class="day">${String(day).padStart(2, '0')}</div>
-          <div class="month-year">${month}月 ${year}</div>
-          <div class="weekday">${weekday}</div>
-        </div>
-        <div class="timeline-dot" style="background: ${moodColor}; opacity: 0.5;"></div>
-        <div class="timeline-content trash-item" style="border-left: 4px solid ${moodColor}40;">
-          <div class="timeline-header">
-            <div class="timeline-title">${escapeHtml(entry.title)}</div>
-            <div class="timeline-actions">
-              <button class="btn btn-small btn-primary ripple" onclick="restoreEntry(${entry.id})">恢复</button>
-              <button class="btn btn-small btn-danger ripple" onclick="permanentDelete(${entry.id})">彻底删除</button>
+        <div class="timeline-header-sticky">
+          <div class="timeline-marker-row">
+            <div class="timeline-marker">
+              <div class="timeline-marker-dot" style="background: var(--text-muted); opacity: 0.5;"></div>
             </div>
+            <div class="timeline-date-text" style="color: var(--text-muted);">${dateText}</div>
+          </div>
+          <div class="timeline-actions-row">
+            <button class="btn btn-small btn-primary" onclick="restoreEntry(${entry.id})">恢复</button>
+            <button class="btn btn-small btn-danger" onclick="permanentDelete(${entry.id})">彻底删除</button>
+          </div>
+        </div>
+        <div class="timeline-card trash-card">
+          <div class="timeline-card-header">
+            <div class="timeline-title">${escapeHtml(entry.title)}</div>
           </div>
           <div class="timeline-meta">
-            ${entry.mood ? `<span class="timeline-mood" style="background: ${moodColor}15; color: ${moodColor};">${entry.mood}</span>` : ''}
+            ${entry.mood ? `<span class="timeline-mood">${entry.mood}</span>` : ''}
             ${entry.location ? `<span class="timeline-location">📍 ${escapeHtml(entry.location)}</span>` : ''}
-            <span style="color: var(--text-muted);">删除于 ${deletedDate}</span>
+            <span>删除于 ${deletedDate}</span>
           </div>
           ${entry.content ? `<div class="timeline-body">${escapeHtml(entry.content)}</div>` : ''}
           ${entry.images?.length ? `
@@ -546,12 +528,11 @@ async function permanentDelete(id) {
 }
 
 // ============ 图片上传 ============
-
 function handleImageSelect(e) {
   const files = Array.from(e.target.files);
   pendingImages = pendingImages.concat(files);
   renderImagePreview();
-  e.target.value = ''; // 重置以便重复选择同一文件
+  e.target.value = '';
 }
 
 function renderImagePreview() {
@@ -637,7 +618,6 @@ function showError(message) {
 }
 
 // ============ 关闭服务器 ============
-
 async function shutdownServer() {
   if (!confirm('确定要关闭程序吗？\n关闭后需要重新运行 node server.js 才能再次使用。')) return;
 
@@ -647,12 +627,11 @@ async function shutdownServer() {
     // 服务器关闭后连接会断开，这是正常的
   }
 
-  // 显示关闭提示
   document.body.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--bg);font-family:sans-serif;">
+    <div style="display:flex;align-items:center;justify-content:center;height:100vh;background:var(--canvas);font-family:var(--font-sans);">
       <div style="text-align:center;color:var(--text-secondary);">
         <div style="font-size:48px;margin-bottom:16px;">👋</div>
-        <h2 style="margin-bottom:8px;color:var(--text);">程序已关闭</h2>
+        <h2 style="margin-bottom:8px;color:var(--text-primary);font-family:var(--font-serif);">程序已关闭</h2>
         <p>感谢使用人生时间线</p>
         <p style="font-size:13px;color:var(--text-muted);margin-top:24px;">
           下次启动请运行：<br>
@@ -662,34 +641,6 @@ async function shutdownServer() {
     </div>
   `;
 }
-
-// 按钮 ripple 效果
-document.addEventListener('click', (e) => {
-  const btn = e.target.closest('.ripple');
-  if (!btn) return;
-
-  const rect = btn.getBoundingClientRect();
-  const ripple = document.createElement('span');
-  const size = Math.max(rect.width, rect.height);
-  const x = e.clientX - rect.left - size / 2;
-  const y = e.clientY - rect.top - size / 2;
-
-  ripple.style.cssText = `
-    position: absolute;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.35);
-    width: ${size}px;
-    height: ${size}px;
-    left: ${x}px;
-    top: ${y}px;
-    animation: rippleEffect 0.5s ease-out;
-    pointer-events: none;
-  `;
-  btn.style.position = 'relative';
-  btn.style.overflow = 'hidden';
-  btn.appendChild(ripple);
-  setTimeout(() => ripple.remove(), 500);
-});
 
 // 点击弹窗外部关闭
 document.getElementById('entryModal').addEventListener('click', (e) => {
