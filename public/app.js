@@ -152,6 +152,11 @@ function renderTimeline(entries) {
             ${entry.tags.map(tag => `<span class="timeline-tag" onclick="filterByTag('${escapeHtml(tag)}')">${escapeHtml(tag)}</span>`).join('')}
           </div>
         ` : ''}
+        ${entry.links?.length ? `
+          <div class="timeline-links">
+            ${entry.links.map(link => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="timeline-link">${escapeHtml(link)}</a>`).join('')}
+          </div>
+        ` : ''}
       </div>
     `;
     container.appendChild(el);
@@ -353,6 +358,7 @@ async function editEntry(id) {
     document.getElementById('entryMood').value = entry.mood || '';
     document.getElementById('entryLocation').value = entry.location || '';
     document.getElementById('entryTags').value = (entry.tags || []).join(', ');
+    document.getElementById('entryLinks').value = (entry.links || []).join('\n');
 
     uploadedImageUrls = entry.images || [];
     pendingImages = [];
@@ -393,6 +399,7 @@ async function saveEntry(e) {
     mood: document.getElementById('entryMood').value,
     location: document.getElementById('entryLocation').value.trim(),
     tags: document.getElementById('entryTags').value.split(',').map(t => t.trim()).filter(Boolean),
+    links: document.getElementById('entryLinks').value.split('\n').map(t => t.trim()).filter(Boolean),
     images: imageUrls
   };
 
@@ -493,6 +500,11 @@ async function loadTrashView() {
           ${entry.tags?.length ? `
             <div class="timeline-tags">
               ${entry.tags.map(tag => `<span class="timeline-tag">${escapeHtml(tag)}</span>`).join('')}
+            </div>
+          ` : ''}
+          ${entry.links?.length ? `
+            <div class="timeline-links">
+              ${entry.links.map(link => `<a href="${escapeHtml(link)}" target="_blank" rel="noopener" class="timeline-link">${escapeHtml(link)}</a>`).join('')}
             </div>
           ` : ''}
         </div>
