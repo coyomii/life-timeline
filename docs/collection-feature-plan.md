@@ -2,34 +2,45 @@
 
 ## 1. 数据模型
 
-在 `life-data.json` 中新增 `collections` 数组：
+在 SQLite 数据库 `life.db` 中新增 `collections` 表：
+
+```sql
+CREATE TABLE collections (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,              -- bilibili | xiaohongshu | weixin | local
+  title TEXT NOT NULL,
+  description TEXT,
+  source_url TEXT,
+  local_path TEXT,                 -- 如 collections/bilibili/xxx/
+  files TEXT,                      -- JSON 字符串：["video.mp4", "cover.jpg"]
+  thumbnail TEXT,                  -- 缩略图路径
+  tags TEXT,                       -- JSON 字符串：["收藏", "B站"]
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  metadata TEXT                    -- JSON 字符串：{author, duration, platformId}
+);
+```
+
+示例数据：
 
 ```json
 {
-  "entries": [...],
-  "tags": [...],
-  "entryTags": [...],
-  "collections": [
-    {
-      "id": "c_1747750000000",
-      "type": "bilibili|xiaohongshu|weixin|local",
-      "title": "视频标题",
-      "description": "简介/描述",
-      "sourceUrl": "原始URL",
-      "localPath": "collections/bilibili/xxx/",
-      "files": ["video.mp4", "cover.jpg"],
-      "thumbnail": "collections/bilibili/xxx/cover.jpg",
-      "tags": ["收藏", "B站"],
-      "createdAt": "2026-05-20T10:00:00Z",
-      "updatedAt": "2026-05-20T10:00:00Z",
-      "metadata": {
-        "author": "UP主名",
-        "duration": "10:32",
-        "platformId": "BV1xx411c7mD"
-      }
-    }
-  ],
-  "collectionTags": ["收藏", "B站", "小红书", "微信", "音乐", "小说", "视频"]
+  "id": 1,
+  "type": "bilibili",
+  "title": "视频标题",
+  "description": "简介/描述",
+  "source_url": "https://www.bilibili.com/video/BV1xx411c7mD",
+  "local_path": "collections/bilibili/xxx/",
+  "files": ["video.mp4", "cover.jpg"],
+  "thumbnail": "collections/bilibili/xxx/cover.jpg",
+  "tags": ["收藏", "B站"],
+  "created_at": "2026-05-20T10:00:00Z",
+  "updated_at": "2026-05-20T10:00:00Z",
+  "metadata": {
+    "author": "UP主名",
+    "duration": "10:32",
+    "platformId": "BV1xx411c7mD"
+  }
 }
 ```
 
@@ -199,8 +210,8 @@ const allowedTypes = {
 ## 6. 实现阶段
 
 ### 第一阶段：基础框架（1-2 天）
-- [ ] 扩展 `life-data.json` 数据结构（collections + collectionTags）
-- [ ] 新建 `collections/` 路由文件，实现基础 CRUD API
+- [ ] 在 `life.db` 中创建 `collections` 表
+- [ ] 在 `database.js` 中新增 collections CRUD 方法，或新建 `routes/collections.js`
 - [ ] 前端新增「收藏」导航和列表视图
 - [ ] 本地文件上传功能（复用 multer，扩展文件类型）
 - [ ] 提交 git
