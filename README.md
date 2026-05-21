@@ -47,6 +47,10 @@ npm start
 
 ## 技术栈
 
-- **后端**：Node.js + Express + SQLite3
+- **后端**：Node.js + Express + SQLite (`node:sqlite`)
 - **前端**：原生 HTML/CSS/JavaScript（无框架依赖）
 - **数据库**：SQLite（单文件，零配置）
+
+## 开发声明
+
+本项目全部代码由 AI 助手（Claude）根据需求描述自主开发完成，包括架构设计、代码实现、测试验证及文档编写。
